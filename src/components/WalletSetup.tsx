@@ -41,11 +41,12 @@ export default function WalletSetup() {
     toast.success('Wallet created!');
   };
 
-  const copyKey = () => {
-    navigator.clipboard.writeText(generatedKey);
+  const copyKey = async () => {
+    await navigator.clipboard.writeText(generatedKey);
     setCopied(true);
     toast.success('Copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => navigator.clipboard.writeText(''), 60_000);
   };
 
   const closeModal = () => {

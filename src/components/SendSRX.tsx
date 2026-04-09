@@ -3,13 +3,25 @@
 import { useState } from 'react';
 import { useWalletStore } from '@/lib/store';
 import { getAddressInfo, getNonce, sendTransaction } from '@/lib/api';
-import { signTransaction, buildTxid, privateKeyToPublicKey } from '@/lib/crypto';
+import { signTransaction } from '@/lib/crypto';
 import { ArrowLeft, Loader2, Check, Copy, Send, Clipboard } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 7119);
 const MIN_FEE = 10000;
 const SENTRI = 100_000_000;
+
+function parseSRXToSentri(input: string): number {
+  const [whole = '0', decimal = ''] = input.split('.');
+  const paddedDecimal = decimal.padEnd(8, '0').slice(0, 8);
+  return parseInt(whole + paddedDecimal, 10);
+}
+
+function sentriToSRX(sentri: number): string {
+  const whole = Math.floor(sentri / SENTRI);
+  const frac = String(sentri % SENTRI).padStart(8, '0').replace(/0+$/, '');
+  return frac ? `${whole}.${frac}` : `${whole}`;
+}
 
 export default function SendSRX({ onBack }: { onBack: () => void }) {
   const { address, privateKey } = useWalletStore();
@@ -18,14 +30,15 @@ export default function SendSRX({ onBack }: { onBack: () => void }) {
   const [sending, setSending] = useState(false);
   const [txid, setTxid] = useState('');
   const [txCopied, setTxCopied] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const loadMax = async () => {
     if (!address) return;
     try {
       const info = await getAddressInfo(address);
-      const bal = info?.balance_srx ?? 0;
-      const max = bal - MIN_FEE / SENTRI;
-      if (max > 0) setAmount(max.toFixed(4));
+      const balSentri = info?.balance_sentri ?? Math.round((info?.balance_srx ?? 0) * SENTRI);
+      const maxSentri = Math.max(0, balSentri - MIN_FEE);
+      if (maxSentri > 0) setAmount(sentriToSRX(maxSentri));
     } catch { /* ignore */ }
   };
 
@@ -40,25 +53,29 @@ export default function SendSRX({ onBack }: { onBack: () => void }) {
     setTimeout(() => setTxCopied(false), 2000);
   };
 
-  const feeDisplay = (MIN_FEE / SENTRI).toFixed(4);
-  const totalDisplay = amount ? (parseFloat(amount) + MIN_FEE / SENTRI).toFixed(4) : '0.0000';
+  const feeDisplay = sentriToSRX(MIN_FEE);
+  const amountSentri = amount ? parseSRXToSentri(amount) : 0;
+  const totalDisplay = amountSentri > 0 ? sentriToSRX(amountSentri + MIN_FEE) : '0';
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!address || !privateKey) return;
     if (!toAddress.startsWith('0x') || toAddress.length !== 42) {
       toast.error('Invalid address');
       return;
     }
-    const amountSrx = parseFloat(amount);
-    if (isNaN(amountSrx) || amountSrx <= 0) {
+    if (isNaN(amountSentri) || amountSentri <= 0) {
       toast.error('Enter a valid amount');
       return;
     }
+    setShowConfirm(true);
+  };
 
+  const handleConfirmedSend = async () => {
+    if (!address || !privateKey) return;
+    setShowConfirm(false);
     setSending(true);
     try {
       const nonce = await getNonce(address);
-      const amountSentri = Math.floor(amountSrx * SENTRI);
       const timestamp = Math.floor(Date.now() / 1000);
 
       const payload = {
@@ -66,9 +83,7 @@ export default function SendSRX({ onBack }: { onBack: () => void }) {
         nonce, data: '', timestamp, chain_id: CHAIN_ID,
       };
 
-      const signature = await signTransaction(payload, privateKey);
-      const publicKey = privateKeyToPublicKey(privateKey);
-      const computedTxid = buildTxid(payload);
+      const { signature, txid: computedTxid, public_key: publicKey } = await signTransaction(payload, privateKey);
 
       const result = await sendTransaction({
         txid: computedTxid, from_address: address, to_address: toAddress,
@@ -138,8 +153,8 @@ export default function SendSRX({ onBack }: { onBack: () => void }) {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  type="number"
-                  step="0.0001"
+                  type="text"
+                  inputMode="decimal"
                   className="w-full rounded-xl p-3.5 pr-16 text-sm focus:outline-none transition-all"
                   style={{ background: '#F1F5F9', border: '2px solid transparent', color: '#0F172A' }}
                   onFocus={(e) => e.currentTarget.style.borderColor = '#10b981'}
@@ -191,6 +206,49 @@ export default function SendSRX({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="rounded-2xl p-6 max-w-sm w-full" style={{ background: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
+            <h3 className="text-lg font-bold mb-4" style={{ color: '#0F172A' }}>Confirm Transaction</h3>
+            <div className="space-y-3 mb-6">
+              <div>
+                <span className="text-xs font-medium block mb-1" style={{ color: '#94A3B8' }}>To</span>
+                <span className="text-sm font-mono break-all" style={{ color: '#0F172A' }}>{toAddress}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: '#94A3B8' }}>Amount</span>
+                <span className="font-semibold" style={{ color: '#0F172A' }}>{amount} SRX</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: '#94A3B8' }}>Fee</span>
+                <span style={{ color: '#0F172A' }}>{feeDisplay} SRX</span>
+              </div>
+              <div className="flex justify-between pt-3" style={{ borderTop: '1px solid #E2E8F0' }}>
+                <span className="font-semibold" style={{ color: '#64748B' }}>Total</span>
+                <span className="font-bold" style={{ color: '#0F172A' }}>{totalDisplay} SRX</span>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
+                style={{ background: '#F1F5F9', color: '#64748B' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmedSend}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg, #10b981, #06b6d4)', boxShadow: '0 4px 14px rgba(16,185,129,0.35)' }}
+              >
+                Confirm &amp; Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

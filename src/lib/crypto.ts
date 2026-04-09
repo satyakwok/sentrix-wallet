@@ -59,20 +59,26 @@ export function buildSigningPayload(payload: SigningPayload): string {
 export async function signTransaction(
   payload: SigningPayload,
   privateKeyHex: string
-): Promise<string> {
+): Promise<{ signature: string; txid: string; public_key: string }> {
   const payloadStr = buildSigningPayload(payload);
-  const msgHash = sha256(new TextEncoder().encode(payloadStr));
-  const sig = await secp.signAsync(msgHash, hexToBytes(privateKeyHex), { lowS: true });
-  const sigBytes = typeof sig === 'object' && 'toCompactRawBytes' in sig
-    ? (sig as { toCompactRawBytes: () => Uint8Array }).toCompactRawBytes()
-    : sig as Uint8Array;
-  return bytesToHex(sigBytes);
-}
-
-export function buildTxid(payload: SigningPayload): string {
-  const payloadStr = buildSigningPayload(payload);
-  const hash = sha256(new TextEncoder().encode(payloadStr));
-  return bytesToHex(hash);
+  const msgBytes = new TextEncoder().encode(payloadStr);
+  const msgHash = sha256(msgBytes);
+  const keyBytes = hexToBytes(privateKeyHex);
+  try {
+    const sig = await secp.signAsync(msgHash, keyBytes, { lowS: true });
+    const sigBytes = typeof sig === 'object' && 'toCompactRawBytes' in sig
+      ? (sig as { toCompactRawBytes: () => Uint8Array }).toCompactRawBytes()
+      : sig as Uint8Array;
+    const txid = bytesToHex(sha256(msgBytes));
+    const public_key = bytesToHex(secp.getPublicKey(keyBytes, false));
+    return {
+      signature: bytesToHex(sigBytes),
+      txid,
+      public_key,
+    };
+  } finally {
+    keyBytes.fill(0);
+  }
 }
 
 export function isValidPrivateKey(hex: string): boolean {

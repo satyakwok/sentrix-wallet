@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useWalletStore } from '@/lib/store';
 import { getNonce, sendTransaction } from '@/lib/api';
-import { signTransaction, buildTxid, privateKeyToPublicKey } from '@/lib/crypto';
+import { signTransaction } from '@/lib/crypto';
 import { ArrowLeft, Loader2, Check, Copy, Send, Clipboard } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -13,6 +13,12 @@ const MIN_FEE = 10000;
 const SENTRI = 100_000_000;
 const TOKEN_OP_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+function sentriToSRX(sentri: number): string {
+  const whole = Math.floor(sentri / SENTRI);
+  const frac = String(sentri % SENTRI).padStart(8, '0').replace(/0+$/, '');
+  return frac ? `${whole}.${frac}` : `${whole}`;
+}
+
 export default function SendSNTX({ onBack }: { onBack: () => void }) {
   const { address, privateKey } = useWalletStore();
   const [toAddress, setToAddress] = useState('');
@@ -20,6 +26,7 @@ export default function SendSNTX({ onBack }: { onBack: () => void }) {
   const [sending, setSending] = useState(false);
   const [txid, setTxid] = useState('');
   const [txCopied, setTxCopied] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const handlePaste = async () => {
     const text = await navigator.clipboard.readText();
@@ -32,20 +39,25 @@ export default function SendSNTX({ onBack }: { onBack: () => void }) {
     setTimeout(() => setTxCopied(false), 2000);
   };
 
-  const feeDisplay = (MIN_FEE / SENTRI).toFixed(4);
+  const feeDisplay = sentriToSRX(MIN_FEE);
+  const tokenAmount = parseInt(amount) || 0;
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!address || !privateKey) return;
     if (!toAddress.startsWith('0x') || toAddress.length !== 42) {
       toast.error('Invalid address');
       return;
     }
-    const tokenAmount = parseInt(amount);
     if (isNaN(tokenAmount) || tokenAmount <= 0) {
       toast.error('Enter a valid amount');
       return;
     }
+    setShowConfirm(true);
+  };
 
+  const handleConfirmedSend = async () => {
+    if (!address || !privateKey) return;
+    setShowConfirm(false);
     setSending(true);
     try {
       const nonce = await getNonce(address);
@@ -59,9 +71,7 @@ export default function SendSNTX({ onBack }: { onBack: () => void }) {
         nonce, data: tokenOp, timestamp, chain_id: CHAIN_ID,
       };
 
-      const signature = await signTransaction(payload, privateKey);
-      const publicKey = privateKeyToPublicKey(privateKey);
-      const computedTxid = buildTxid(payload);
+      const { signature, txid: computedTxid, public_key: publicKey } = await signTransaction(payload, privateKey);
 
       const result = await sendTransaction({
         txid: computedTxid, from_address: address, to_address: TOKEN_OP_ADDRESS,
@@ -175,6 +185,45 @@ export default function SendSNTX({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="rounded-2xl p-6 max-w-sm w-full" style={{ background: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
+            <h3 className="text-lg font-bold mb-4" style={{ color: '#0F172A' }}>Confirm Transaction</h3>
+            <div className="space-y-3 mb-6">
+              <div>
+                <span className="text-xs font-medium block mb-1" style={{ color: '#94A3B8' }}>To</span>
+                <span className="text-sm font-mono break-all" style={{ color: '#0F172A' }}>{toAddress}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: '#94A3B8' }}>Amount</span>
+                <span className="font-semibold" style={{ color: '#0F172A' }}>{amount} SNTX</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: '#94A3B8' }}>Fee</span>
+                <span style={{ color: '#0F172A' }}>{feeDisplay} SRX</span>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95"
+                style={{ background: '#F1F5F9', color: '#64748B' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmedSend}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
+              >
+                Confirm &amp; Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
