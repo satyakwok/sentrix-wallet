@@ -29,7 +29,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ## 5. Get SSL certificates
 
 ```bash
-sudo certbot --nginx -d wallet.sentriscloud.com -d api.sentriscloud.com
+sudo certbot --nginx -d sentrix-wallet.sentriscloud.com -d sentrix-api.sentriscloud.com
 ```
 
 ## 6. Add GitHub Secrets
