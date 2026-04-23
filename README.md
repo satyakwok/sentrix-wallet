@@ -24,7 +24,7 @@ Web wallet UI for the Sentrix blockchain (Chain ID 7119).
 ## Security
 
 - Private key never sent over network — only signature + public key
-- Private key excluded from localStorage (only address persisted)
+- No wallet state persisted to storage — key lives in memory only, cleared on refresh
 - Integer arithmetic for amount calculations (no floating-point precision loss)
 - Confirmation dialog before every transaction
 - Clipboard auto-cleared 60s after private key copy

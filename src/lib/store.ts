@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
 interface WalletState {
   privateKey: string | null;
@@ -8,17 +7,9 @@ interface WalletState {
   clearWallet: () => void;
 }
 
-export const useWalletStore = create<WalletState>()(
-  persist(
-    (set) => ({
-      privateKey: null,
-      address: null,
-      setWallet: (privateKey, address) => set({ privateKey, address }),
-      clearWallet: () => set({ privateKey: null, address: null }),
-    }),
-    {
-      name: 'sentrix-wallet',
-      partialize: (state) => ({ address: state.address }),
-    }
-  )
-);
+export const useWalletStore = create<WalletState>()((set) => ({
+  privateKey: null,
+  address: null,
+  setWallet: (privateKey, address) => set({ privateKey, address }),
+  clearWallet: () => set({ privateKey: null, address: null }),
+}));

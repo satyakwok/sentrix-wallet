@@ -5,9 +5,9 @@ import WalletSetup from '@/components/WalletSetup';
 import Dashboard from '@/components/Dashboard';
 
 export default function WalletPage() {
-  const { address } = useWalletStore();
+  const { privateKey } = useWalletStore();
 
-  if (!address) {
+  if (!privateKey) {
     return <WalletSetup />;
   }
 
